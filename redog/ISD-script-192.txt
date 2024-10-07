@@ -1,0 +1,138 @@
+from sage.doctest.util import Timer
+
+level = 192
+(n, k, l, q, m, r, t) = (58, 10, 49, 2, 109, 24, 8)
+ran_len = 15
+Fqm.<z> = GF(q^m)
+
+def Hash_function(error_vec, length_n, length_k, length_l , seed_num = 0) : # copied from REDOG's implementation
+    import random
+    random.seed(seed_num)
+    index_list = range(2*length_n - length_k)
+    index = random.sample(index_list, length_l)
+    Field = error_vec.base_ring()
+    Hash_error = zero_matrix(Field, 1, length_l)
+    for i in range(length_l):
+        Hash_error[0,i] = error_vec[0, index[i]] 
+    return matrix(Hash_error)
+
+def pis(G,y):
+	M = copy(G)
+	k,n = M.dimensions()
+	p = list(Permutations(n).random_element())
+	indexes = p[:k]
+	indexes.sort()
+	colsG = [M.columns()[i-1] for i in indexes]
+	colsy = [y.columns()[i-1] for i in indexes]
+	pisG = matrix(Fqm, colsG)
+	pisy = matrix(Fqm, colsy)
+	return pisG.transpose(), pisy.transpose()
+	
+	
+def Prange(pubKey, y, t):
+	M = pubKey[0].augment(pubKey[1])
+	kpr,npr = M.dimensions()
+	yleft = y[0][:n]
+	yright = y[0][n:]
+	while True:
+		M1,y1 = pis(M,y)
+		while not M1.is_invertible():
+			M1,y1 = pis(M,y)
+		U = M1.inverse()
+		msg =y1*U
+		y1left = msg*pubKey[0].matrix_from_columns(list(range(t+3)))
+		wtleft = len([i for i in range(t+3) if y1left[0][i]!=yleft[i]])
+		if wtleft <= t:
+			x = msg*M
+			wt = len([i for i in range(2*n-k) if x[0][i]!=y[0][i]])
+			if wt <= t:
+				e = y -x
+				return msg, e
+
+def string_to_mat(s,nrows,ncols):
+	sbin = [list(reversed(Integer(ch,base=16).digits(base=2,padto=4))) for ch in s]
+	sbin = flatten(sbin)
+	meta = []
+	for i in range(0,len(sbin),m):
+		meta.append(Fqm(sbin[i:i+m]))
+	return matrix(Fqm,nrows,ncols,meta[:ncols*nrows])
+	
+def el_to_string(polynomial): #copied from original submission
+    p_coeff = matrix(ZZ(polynomial.integer_representation() ).digits(base=q, padto=m))
+    p_bin = p_coeff[0]
+    return p_bin
+
+def string_to_Fqm_tuple(s):
+	s = s.split()
+	tup = []
+	el = ''
+	j=1
+	while j<len(s):
+		if s[j]!='+':
+			el += s[j-1]
+			tup.append(Fqm(el))
+			el = ''
+			j +=1
+		else : 
+			el += s[j-1]+s[j]
+			j+=2
+	if j ==len(s):tup.append(Fqm(el+s[j-1]))
+	if j ==len(s)+1 : tup.append(Fqm(el+s[j-1]))
+	return tup
+
+with open(f'rsp_{level}.rsp', 'r') as f:
+	cipher, pk0, pk1 = None, [], []
+	startM = False # used to read pk which is on different lines
+	startF = False
+	i = 1 # used to read the public key 0 <= i < l
+	time = 0
+	timer = Timer()
+	for line in f:
+		if startM and i<l:
+			i = i+1
+			pkl = line[1:-2]
+			pk0.append(string_to_Fqm_tuple(pkl))
+
+		if startF and i < l:
+			i += 1
+			pkl = line[1:-2]
+			pk1.append(string_to_Fqm_tuple(pkl))
+			
+		if line[:5] == 'msg =':
+			msg = string_to_mat(line[6:-1],1,l)
+		if line[:4] == 'pk =': 
+			startM = True
+			pkl = line[6:-2]
+			pk0.append(string_to_Fqm_tuple(pkl))
+		if startM and line[0] == ',':
+			pkl = line[3:-2]
+			pk1.append(string_to_Fqm_tuple(pkl))
+			startM = False
+			startF = True
+			i = 1
+		if startF and i==l:
+			startF=False
+			i=1
+		if line[:3] == 'c =':
+			pk0 = matrix(Fqm,l,n,pk0)
+			pk1 = matrix(Fqm,l,n-k,pk1)
+			cipher = line[4:-1]
+			cipher = string_to_mat(cipher,1,2*n-k)
+			timer.start()
+			m_prange,e= Prange([pk0,pk1], cipher, t)
+			timer.stop()
+			time += timer.walltime
+			print(m_prange - Hash_function(e,n,k,l)==msg)
+			pk0,pk1=[],[]
+			i=1
+			startM=False
+			startF=False
+	print(time/ran_len)	
+		
+		
+		
+		
+		
+		
+		
+		

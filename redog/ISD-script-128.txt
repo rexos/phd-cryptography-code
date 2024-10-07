@@ -1,0 +1,103 @@
+from sage.doctest.util import Timer
+
+(n, k, l, q, m, r, t) = (44, 8, 37, 2, 83, 18, 6)
+
+Fqm = GF(q^m)
+ran_len = 30
+
+def Hash_function(error_vec, length_n, length_k, length_l , seed_num = 0) : # copied from REDOG's implementation
+    import random
+    random.seed(seed_num)
+    index_list = range(2*length_n - length_k)
+    index = random.sample(index_list, length_l)
+    Field = error_vec.base_ring()
+    Hash_error = zero_matrix(Field, 1, length_l)
+    for i in range(length_l):
+        Hash_error[0,i] = error_vec[0, index[i]] 
+    return matrix(Hash_error)
+
+def pis(G,y):
+	M = copy(G)
+	k,n = M.dimensions()
+	p = list(Permutations(n).random_element())
+	indexes = p[:k]
+	indexes.sort()
+	colsG = [M.columns()[i-1] for i in indexes]
+	colsy = [y.columns()[i-1] for i in indexes]
+	pisG = matrix(Fqm, colsG)
+	pisy = matrix(Fqm, colsy)
+	return pisG.transpose(), pisy.transpose()
+	
+	
+def Prange(pubKey, y, t):
+	M = pubKey[0].augment(pubKey[1])
+	kpr,npr = M.dimensions()
+	yleft = y[0][:n]
+	yright = y[0][n:]
+	while True:
+		M1,y1 = pis(M,y)
+		while not M1.is_invertible():
+			M1,y1 = pis(M,y)
+		U = M1.inverse()
+		msg =y1*U
+		y1left = msg*pubKey[0].matrix_from_columns(list(range(t+3)))
+		wtleft = len([i for i in range(t+3) if y1left[0][i]!=yleft[i]])
+		if wtleft <= t:
+			x = msg*M
+			wt = len([i for i in range(2*n-k) if x[0][i]!=y[0][i]])
+			if wt <= t:
+				e = y -x
+				return msg, e
+			
+def string_to_mat(s,nrows,ncols):
+	sbin = [list(reversed(Integer(ch,base=16).digits(base=2,padto=4))) for ch in s]
+	sbin = flatten(sbin)
+	meta = []
+	for i in range(0,len(sbin),m):
+		meta.append(Fqm(sbin[i:i+m]))
+	return matrix(Fqm,nrows,ncols,meta[:ncols*nrows])
+	
+def el_to_string(polynomial): #copied from original submission
+    p_coeff = matrix(ZZ(polynomial.integer_representation() ).digits(base=q, padto=m))
+    p_bin = p_coeff[0]
+    return p_bin
+
+with open('rsp_128.rsp', 'r') as f:
+	pk, cipher, pk0, pk1 = '', '', '', ''
+	start = False # used to read pk which is on 2 different lines
+	time = 0
+	timer = Timer()
+	for line in f:
+		line = line.split()
+		if line[:2] == ['msg', '=']:
+			msg = string_to_mat(line[2],1,37)
+		if line[:2] == ['pk', '=']: 
+			start = True
+			pk = line[2]
+			tmp = pk
+			pk0 = string_to_mat(pk,37,44)
+		elif start and line[0] == ',':
+			pk= line[1]
+			pk1 = string_to_mat(pk,37,36)
+			start = False
+		else: start=False
+		if line[:2] == ['c','=']:
+			cipher = line[2]
+			cipher = string_to_mat(cipher,1,80)
+			end=True
+			timer.start()
+			m_prange,e= Prange([pk0,pk1], cipher, 6)
+			timer.stop()
+			time += timer.walltime
+			print(m_prange - Hash_function(e,44,8,37)==msg)
+	print(time/ran_len)	
+			
+		
+		
+		
+		
+		
+		
+		
+		
+		
