@@ -1,0 +1,137 @@
+function RandomSubset(n, k)
+    S := [1..n];
+    L := [];
+    while #L lt k do
+        i := Random(1, n);
+        if i notin L then
+            L cat:= [i];
+        end if;
+    end while;
+    return L;
+end function;
+
+function GetRandomGoppaCode(F,t)
+    g := IrreduciblePolynomial(F,t);
+    L := [el : el in F];
+    C := GoppaCode(L, g);
+    return C;
+end function;
+
+function GenError(n,weight)
+    p := Random(SymmetricGroup(n));
+    etmp := [1 : i in [1..weight]] cat [0 : i in [1..n - weight]];
+    return [etmp[i^p] : i in [1..n]];
+end function;
+
+
+function CreateSystem(H,s,t1)
+    n := NumberOfColumns(H);
+    k := NumberOfRows(H);
+    m := n - k;
+    //t1 := Floor((MinimumDistance(C) - 1) / 2);
+    l := Floor(Log(2, t1)) + 1;
+    P<[x]> := PolynomialRing(GF(2), n + n*l,"grevlex");
+    //H := ParityCheckMatrix(C);
+
+
+    function ToBinary(val)
+        bits := Intseq(val,2);
+        return bits cat [0 : i in [1..l - #bits]];
+    end function;
+
+    
+
+    //e := GenError(t1);
+    t := ToBinary(t1);
+    //s := Vector(GF(2),e)*Transpose(H);
+
+    function ParityCheck(H, s)
+        S := [];
+        j := 1;
+        for row in Rows(H) do
+            S[j] := &+([x[i] : i in [1..n] | row[i] eq 1]) + s[j];
+            j +:= 1;
+        end for;
+        return S;
+    end function;
+    
+    function WeightComputation()
+        S := [x[n+1] + x[1]];
+        for j in [2..l] do
+            S := S cat [x[n+j]];
+        end for;
+        for i in [2..n] do
+            B := [x[i] + x[n+(i-1)*l+1] + x[n+(i-2)*l + 1]];
+            for j in [2..l] do
+                B := B cat [x[n+(i-1)*l+j] + x[n+(i-2)*l + j] + x[n+(i-2)*l+j-1] + x[n+(i-1)*l+j-1]*x[n+(i-2)*l+ j-1]];
+            end for;
+            S := S  cat B cat [(x[n+(i-1)*l+l] + 1)*x[n+(i-2)*l+ l]];
+        end for;
+        return S;
+    end function;
+
+    function WeightConstraint()
+        return [x[n + (n-1)*l + j] + t[j] : j in [1..l]];
+    end function;
+    
+    function WeightConstraint_opt()
+        B := [x[n] + t[1] + x[n+(n-2)*l + 1]];
+        for j in [2..l] do
+            B := B cat [t[j] + x[n+(n-2)*l + j] + x[n+(n-2)*l+j-1] + t[j-1]*x[n+(n-2)*l+ j-1]];
+        end for;
+        return B;
+    end function;
+
+    function FieldEquations()
+        return [x[i]^2 + x[i] : i in [1..n + n*l]];
+    end function;
+
+    S := ParityCheck(H, s) cat WeightComputation();
+    S := S cat WeightConstraint();
+    S cat:= FieldEquations();
+    
+    SS := WeightComputation();
+    SS cat:= WeightConstraint();
+    SS cat:= FieldEquations();
+
+    return S;
+end function;
+
+function ReconstructError(v,n,punc)
+    rec_e := [0 : i in [1..n]];
+    ind := 1;
+    for i in punc do
+        rec_e[i] := v[ind];
+        ind +:=1;
+    end for;
+    return rec_e;#Vector(GF(2),rec_e);
+end function;
+
+t1 := 5;
+ext := 7;
+C := GetRandomGoppaCode(GF(2^ext),t1);
+PC := ParityCheckMatrix(C);
+e := GenError(2^ext,t1);
+s := (Vector(GF(2),e))*Transpose(PC);
+k := Dimension(C);
+V := [];
+j := 0;
+punc := [];
+if true then
+    while #V eq 0 do
+        j +:=1;
+        punc := RandomSubset(2^ext,2^ext-k);
+        H1 := ColumnSubmatrix(PC,punc);
+        C1 := LinearCode(H1);
+        if Dimension(Dual(C1)) gt 0 then
+            printf("Try this: ");
+            print(j);
+            S := CreateSystem(H1,s,t1);
+            V := Variety(Ideal(S));
+        end if;
+    end while;
+end if;
+
+rec_e := ReconstructError(V[1],2^ext,punc);
+
+// load "C:/Users/20204876/OneDrive - TU Eindhoven/Desktop/CCMP/attack.txt";

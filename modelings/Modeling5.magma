@@ -1,0 +1,101 @@
+/*
+Quadratic modeling for the bounded syndrome decoding problem over F_q
+*/
+
+//Gilbert-Varshamov distance for q-ary codes
+function dGV(n, k, q)
+	sum := 1;
+	for d in [1..n] do
+		if sum gt q^(n-k) then return d; end if;
+		sum +:= Binomial(n, d)*(q-1)^d;
+	end for;
+end function;
+
+//problem parameters
+q := 7;
+F := GF(q);
+n := 14;
+k := 7;
+t := 3;
+//t := dGV(n,k,q);
+//k := IntegerRing() ! Log(q, GilbertVarshamovLinearBound(F, n, t)); k;
+
+//code
+C := RandomLinearCode(F, n, k);
+H := ParityCheckMatrix(C);
+
+
+//choose whether to force a solution
+force := true;
+
+if force then
+	//error vector
+	e := [F ! 0 : i in [1..n]];
+	//support
+	E := RandomSubset({1..n}, t);
+	for i in E do
+	    e[i] := Random(Set(F) diff {0});
+	end for;
+	e := Vector(e);
+	e;
+	//syndrome corresponding to the error vector
+	s := e*Transpose(H);
+else
+	//random syndrome
+	s := Vector([Random(F) : i in [1..n-k]]);
+end if;
+s;
+
+//modeling parameters
+r1 := 1;
+r2 := 2;
+m := r1*r2;
+qr1 := q^r1;
+qr2 := q^r2;
+qm := q^m;
+F := GF(q);
+Fr1 := GF(qr1);
+Fr2 := GF(qr2);
+Fm := GF(qm);
+
+a := PrimitiveElement(Fm);
+f := MinimalPolynomial(a, Fr1);
+
+//Polynomial Ring with nl+1 variables (the last variable is used to homogenize)
+R := PolynomialRing(Fm, 2*n+r2*n+1, "grevlex");
+//companion matrix
+A := Matrix(R, Transpose(CompanionMatrix(f)));
+
+//MODELING
+//support constraint equations (homogenized)
+sce := [R.i*(R.(2*n+r2*n+1)-R.(n+i)) : i in [1..n]] cat [R.(n+i)^2-R.(n+i)*R.(2*n+r2*n+1) : i in [1..n]];
+//hamming-weight computation encoding (homogenized)
+hwce := Eltseq(R.(2*n+r2*n+1)*Matrix(1, [R.(2*n+i) : i in [1..r2]])-(R.(2*n+r2*n+1)-R.(n+1))*Matrix(1, [R ! 1] cat [0 : i in [2..r2]])-R.(n+1)*A*Matrix(1, [R ! 1] cat [0 : i in [2..r2]])) cat &cat[Eltseq(R.(2*n+r2*n+1)*Matrix(1, [R.(2*n+j*r2+i) : i in [1..r2]])-(R.(2*n+r2*n+1)-R.(n+j+1))*Matrix(1, [R.(2*n+(j-1)*r2+i) : i in [1..r2]])-R.(n+j+1)*A*Matrix(1, [R.(2*n+(j-1)*r2+i) : i in [1..r2]])) : j in [1..n-1]];
+//weight constraint encoding (homogenized)
+wce := Eltseq(Matrix(1, [R.(2*n+(n-1)*r2+i) : i in [1..r2]])-R.(2*n+r2*n+1)*A^t*Matrix(1, [R ! 1] cat [0 : i in [2..r2]]));
+
+pce := [&+[H[i,j]*R.j : j in [1..n]]-s[i]*R.(2*n+r2*n+1) : i in [1..n-k]];
+//back to affine system
+aff := [R.(2*n+r2*n+1)-1];
+guess := [R.(n+i) : i in [1..k-1]];
+//all equations
+all := sce cat hwce cat wce cat pce cat aff;
+
+SetVerbose("Faugere", 0);
+I := Ideal(all);
+time GB := GroebnerBasis(I);
+//GB eq GroebnerBasis(all, 4);
+dim, free := Dimension(I);
+dim, free;
+
+if dim eq 0 then
+	var := Variety(I); 
+	"#sols = ", #var; "--------";
+	for i in [1..#var] do
+		"e = ", Vector([F ! var[i][j] : j in [1..n]]);
+		"wt = ", #[j : j in [1..n] | var[i][j] ne 0];
+		"s = ", Vector([var[i][j] : j in [1..n]])*Transpose(H); 
+		"----";
+	end for;
+end if;
+
